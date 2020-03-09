@@ -1,352 +1,399 @@
 (function (global, factory) {
-    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('d3'), require('webcharts')) :
-    typeof define === 'function' && define.amd ? define(['d3', 'webcharts'], factory) :
-    (global = global || self, global.barChartRace = factory(global.d3, global.webCharts));
-}(this, (function (d3, webcharts) { 'use strict';
+    typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+    typeof define === 'function' && define.amd ? define(factory) :
+    (global = global || self, global.barChartRace = factory());
+}(this, (function () { 'use strict';
 
-    if (typeof Object.assign != 'function') {
-        Object.defineProperty(Object, 'assign', {
-            value: function assign(target, varArgs) {
-
-                if (target == null) {
-                    // TypeError if undefined or null
-                    throw new TypeError('Cannot convert undefined or null to object');
-                }
-
-                var to = Object(target);
-
-                for (var index = 1; index < arguments.length; index++) {
-                    var nextSource = arguments[index];
-
-                    if (nextSource != null) {
-                        // Skip over if undefined or null
-                        for (var nextKey in nextSource) {
-                            // Avoid bugs when hasOwnProperty is shadowed
-                            if (Object.prototype.hasOwnProperty.call(nextSource, nextKey)) {
-                                to[nextKey] = nextSource[nextKey];
-                            }
-                        }
-                    }
-                }
-
-                return to;
-            },
-            writable: true,
-            configurable: true
+    function rank(names, value, n) {
+        var data = Array.from(names, function (name) {
+            return { name: name, value: value(name) };
         });
-    }
-
-    if (!Array.prototype.find) {
-        Object.defineProperty(Array.prototype, 'find', {
-            value: function value(predicate) {
-                // 1. Let O be ? ToObject(this value).
-                if (this == null) {
-                    throw new TypeError('"this" is null or not defined');
-                }
-
-                var o = Object(this);
-
-                // 2. Let len be ? ToLength(? Get(O, 'length')).
-                var len = o.length >>> 0;
-
-                // 3. If IsCallable(predicate) is false, throw a TypeError exception.
-                if (typeof predicate !== 'function') {
-                    throw new TypeError('predicate must be a function');
-                }
-
-                // 4. If thisArg was supplied, let T be thisArg; else let T be undefined.
-                var thisArg = arguments[1];
-
-                // 5. Let k be 0.
-                var k = 0;
-
-                // 6. Repeat, while k < len
-                while (k < len) {
-                    // a. Let Pk be ! ToString(k).
-                    // b. Let kValue be ? Get(O, Pk).
-                    // c. Let testResult be ToBoolean(? Call(predicate, T, � kValue, k, O �)).
-                    // d. If testResult is true, return kValue.
-                    var kValue = o[k];
-                    if (predicate.call(thisArg, kValue, k, o)) {
-                        return kValue;
-                    }
-                    // e. Increase k by 1.
-                    k++;
-                }
-
-                // 7. Return undefined.
-                return undefined;
-            }
+        data.sort(function (a, b) {
+            return d3.descending(a.value, b.value);
         });
+        for (var i = 0; i < data.length; ++i) {
+            data[i].rank = Math.min(n, i);
+        }return data;
     }
 
-    if (!Array.prototype.findIndex) {
-        Object.defineProperty(Array.prototype, 'findIndex', {
-            value: function value(predicate) {
-                // 1. Let O be ? ToObject(this value).
-                if (this == null) {
-                    throw new TypeError('"this" is null or not defined');
-                }
+    var slicedToArray = function () {
+      function sliceIterator(arr, i) {
+        var _arr = [];
+        var _n = true;
+        var _d = false;
+        var _e = undefined;
 
-                var o = Object(this);
+        try {
+          for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) {
+            _arr.push(_s.value);
 
-                // 2. Let len be ? ToLength(? Get(O, "length")).
-                var len = o.length >>> 0;
-
-                // 3. If IsCallable(predicate) is false, throw a TypeError exception.
-                if (typeof predicate !== 'function') {
-                    throw new TypeError('predicate must be a function');
-                }
-
-                // 4. If thisArg was supplied, let T be thisArg; else let T be undefined.
-                var thisArg = arguments[1];
-
-                // 5. Let k be 0.
-                var k = 0;
-
-                // 6. Repeat, while k < len
-                while (k < len) {
-                    // a. Let Pk be ! ToString(k).
-                    // b. Let kValue be ? Get(O, Pk).
-                    // c. Let testResult be ToBoolean(? Call(predicate, T, � kValue, k, O �)).
-                    // d. If testResult is true, return k.
-                    var kValue = o[k];
-                    if (predicate.call(thisArg, kValue, k, o)) {
-                        return k;
-                    }
-                    // e. Increase k by 1.
-                    k++;
-                }
-
-                // 7. Return -1.
-                return -1;
-            }
-        });
-    }
-
-    Math.log10 = Math.log10 = Math.log10 || function (x) {
-        return Math.log(x) * Math.LOG10E;
-    };
-
-    // https://github.com/wbkd/d3-extended
-    d3.selection.prototype.moveToFront = function () {
-        return this.each(function () {
-            this.parentNode.appendChild(this);
-        });
-    };
-
-    d3.selection.prototype.moveToBack = function () {
-        return this.each(function () {
-            var firstChild = this.parentNode.firstChild;
-            if (firstChild) {
-                this.parentNode.insertBefore(this, firstChild);
-            }
-        });
-    };
-
-    function rendererSettings() {
-        return {
-            id_col: 'USUBJID',
-            visit_col: 'VISIT',
-            visitn_col: 'VISITNUM',
-            measure_col: 'TEST',
-            value_col: 'STRESN',
-            filters: [] //updated in sync settings
-        };
-    }
-
-    function webchartsSettings() {
-        return {
-            x: {
-                column: null,
-                type: 'ordinal',
-                label: 'Visit'
-            },
-            y: {
-                column: null,
-                type: 'linear',
-                label: 'Value',
-                behavior: 'flex',
-                format: '0.2f'
-            },
-            marks: [{
-                type: 'line',
-                per: null,
-                attributes: { 'stroke-width': 0.5, stroke: '#999' }
-            }],
-            gridlines: 'xy',
-            aspect: 3,
-            color_by: null,
-            max_width: 900
-        };
-    }
-
-    function syncSettings(settings) {
-        // webcharts settings
-        settings.x.column = settings.visitn_col;
-        settings.y.column = settings.value_col;
-        settings.marks[0].per = [settings.id_col];
-        return settings;
-    }
-
-    function controlInputs() {
-        return [{
-            type: 'dropdown',
-            values: ['log', 'linear'],
-            label: 'Log/Linear',
-            option: 'y.type',
-            require: true,
-            start: 'linear'
-        }];
-    }
-
-    function syncControlInputs(controlInputs, settings) {
-        // use the measure column as a filter
-        controlInputs.push({
-            type: 'subsetter',
-            value_col: settings.measure_col,
-            label: 'Measure',
-            required: true,
-            start: 'Calcium'
-        });
-
-        //Add filters to default controls.
-        if (Array.isArray(settings.filters) && settings.filters.length > 0) {
-            settings.filters.forEach(function (filter) {
-                var filterObj = {
-                    type: 'subsetter',
-                    value_col: filter.value_col || filter,
-                    label: filter.label || filter.value_col || filter
-                };
-                controlInputs.push(filterObj);
-            });
+            if (i && _arr.length === i) break;
+          }
+        } catch (err) {
+          _d = true;
+          _e = err;
+        } finally {
+          try {
+            if (!_n && _i["return"]) _i["return"]();
+          } finally {
+            if (_d) throw _e;
+          }
         }
-        return controlInputs;
+
+        return _arr;
+      }
+
+      return function (arr, i) {
+        if (Array.isArray(arr)) {
+          return arr;
+        } else if (Symbol.iterator in Object(arr)) {
+          return sliceIterator(arr, i);
+        } else {
+          throw new TypeError("Invalid attempt to destructure non-iterable instance");
+        }
+      };
+    }();
+
+    function dataManipulation(data, settings) {
+        // define set with ordinal variable
+        data.names = new Set(data.map(function (d) {
+            return d[settings.ordinal_var];
+        }));
+
+        // define set with date variable and with ordinal variable
+        data.datevalues = Array.from(d3.rollup(data, function (_ref) {
+            var _ref2 = slicedToArray(_ref, 1),
+                d = _ref2[0];
+
+            return d.value;
+        }, function (d) {
+            return +d.date;
+        }, function (d) {
+            return d.name;
+        })).map(function (_ref3) {
+            var _ref4 = slicedToArray(_ref3, 2),
+                date = _ref4[0],
+                data = _ref4[1];
+
+            return [new Date(date), data];
+        }).sort(function (_ref5, _ref6) {
+            var _ref8 = slicedToArray(_ref5, 1),
+                a = _ref8[0];
+
+            var _ref7 = slicedToArray(_ref6, 1),
+                b = _ref7[0];
+
+            return d3.ascending(a, b);
+        });
+
+        // define keyframes (?)
+        data.keyframes = [];
+
+        var ka = void 0,
+            a = void 0,
+            kb = void 0,
+            b = void 0;
+        var _iteratorNormalCompletion = true;
+        var _didIteratorError = false;
+        var _iteratorError = undefined;
+
+        try {
+            for (var _iterator = d3.pairs(data.datevalues)[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                var _ref9 = _step.value;
+
+                var _ref16 = slicedToArray(_ref9, 2),
+                    _ref16$ = slicedToArray(_ref16[0], 2),
+                    ka = _ref16$[0],
+                    a = _ref16$[1],
+                    _ref16$2 = slicedToArray(_ref16[1], 2),
+                    kb = _ref16$2[0],
+                    b = _ref16$2[1];
+
+                var _loop = function _loop(i) {
+                    var t = i / settings.n_keyframes;
+                    data.keyframes.push([new Date(ka * (1 - t) + kb * t), rank(data.names, function (name) {
+                        return (a.get(name) || 0) * (1 - t) + (b.get(name) || 0) * t;
+                    }, settings.n_bars)]);
+                };
+
+                for (var i = 0; i < settings.n_keyframes; ++i) {
+                    _loop(i);
+                }
+            }
+        } catch (err) {
+            _didIteratorError = true;
+            _iteratorError = err;
+        } finally {
+            try {
+                if (!_iteratorNormalCompletion && _iterator.return) {
+                    _iterator.return();
+                }
+            } finally {
+                if (_didIteratorError) {
+                    throw _iteratorError;
+                }
+            }
+        }
+
+        data.keyframes.push([new Date(kb), rank(data.names, function (name) {
+            return b.get(name) || 0;
+        }, settings.n_bars)]);
+        console.log(data.keyframes);
+        data.nameframes = d3.groups(data.keyframes.flatMap(function (_ref10) {
+            var _ref11 = slicedToArray(_ref10, 2),
+                data = _ref11[1];
+
+            return data;
+        }), function (d) {
+            return d.name;
+        });
+        console.log(data.nameframes);
+        data.prev = new Map(data.nameframes.flatMap(function (_ref12) {
+            var _ref13 = slicedToArray(_ref12, 2),
+                data = _ref13[1];
+
+            return d3.pairs(data, function (a, b) {
+                return [b, a];
+            });
+        }));
+        console.log(data.prev);
+        data.next = new Map(data.nameframes.flatMap(function (_ref14) {
+            var _ref15 = slicedToArray(_ref14, 2),
+                data = _ref15[1];
+
+            return d3.pairs(data);
+        }));
     }
 
-    function listingSettings() {
-        return {
-            cols: ['ID', 'Measure', 'Visit', 'Value'],
-            searchable: false,
-            sortable: false,
-            pagination: false,
-            exportable: false
+    function x$1(settings) {
+        return d3.scaleLinear([0, 1], [settings.margin.left, settings.width - settings.margin.right]);
+    }
+
+    function y$1(settings) {
+        return d3.scaleBand().domain(d3.range(settings.n_bars + 1)).rangeRound([settings.margin.top, settings.margin.top + settings.bar_size * (settings.n_bars + 1 + 0.1)]).padding(0.1);
+    }
+
+    function color(data) {
+        var scale = d3.scaleOrdinal(d3.schemeTableau10);
+
+        if (data.some(function (d) {
+            return d.category !== undefined;
+        })) {
+            var categoryByName = new Map(data.map(function (d) {
+                return [d.name, d.category];
+            }));
+            scale.domain(Array.from(categoryByName.values()));
+
+            return function (d) {
+                return scale(categoryByName.get(d.name));
+            };
+        }
+
+        return function (d) {
+            return scale(d.name);
         };
     }
 
-    var configuration = {
-        rendererSettings: rendererSettings,
-        webchartsSettings: webchartsSettings,
-        settings: Object.assign({}, rendererSettings(), webchartsSettings()),
-        syncSettings: syncSettings,
-        controlInputs: controlInputs,
-        syncControlInputs: syncControlInputs,
-        listingSettings: listingSettings
-    };
+    function bars(svg, settings, data) {
+      var xScale = x$1(settings);
+      var yScale = y$1(settings);
+      var colorScale = color(data);
 
-    function onInit() {}
+      var bar = svg.append("g").attr("fill-opacity", 0.6).selectAll("rect");
+      console.log(data.prev);
+      return function (_ref, transition) {
+        var _ref2 = slicedToArray(_ref, 2),
+            date = _ref2[0],
+            data = _ref2[1];
 
-    function onLayout() {
-        this.wrap.append('div').append('small').text('Click a line to see details');
+        return bar = bar.data(data.slice(0, settings.n_bars), function (d) {
+          return d.name;
+        }).join(function (enter) {
+          return enter.append("rect").attr("fill", colorScale).attr("height", yScale.bandwidth()).attr("x", xScale(0)).attr("y", function (d) {
+            return yScale((data.prev.get(d) || d).rank);
+          }).attr("width", function (d) {
+            return xScale((data.prev.get(d) || d).value) - xScale(0);
+          });
+        }, function (update) {
+          return update;
+        }, function (exit) {
+          return exit.transition(transition).remove().attr("y", function (d) {
+            return yScale((next.get(d) || d).rank);
+          }).attr("width", function (d) {
+            return xScale((next.get(d) || d).value) - xScale(0);
+          });
+        }).call(function (bar) {
+          return bar.transition(transition).attr("y", function (d) {
+            return yScale(d.rank);
+          }).attr("width", function (d) {
+            return xScale(d.value) - xScale(0);
+          });
+        });
+      };
     }
 
-    function onPreprocess() {
-        chart.listing.draw([]);
-        chart.listing.wrap.style('display', 'none');
+    function axis(svg, settings) {
+        var xScale = x$1(settings);
+        var yScale = y$1(settings);
+        var g = svg.append("g").attr("transform", 'translate(0,' + settings.margin.top + ')');
+
+        var axis = d3.axisTop(xScale).ticks(settings.width / 160).tickSizeOuter(0).tickSizeInner(-settings.bar_size * (settings.n_bars + yScale.padding()));
+
+        return function (_, transition) {
+            g.transition(transition).call(axis);
+            g.select(".tick:first-of-type text").remove();
+            g.selectAll(".tick:not(:first-of-type) line").attr("stroke", "white");
+            g.select(".domain").remove();
+        };
     }
 
-    function onDatatransform() {}
+    function labels(svg) {
+      var label = svg.append("g").style("font", "bold 12px var(--sans-serif)").style("font-variant-numeric", "tabular-nums").attr("text-anchor", "end").selectAll("text");
 
-    function onDraw() {}
+      return function (_ref, transition) {
+        var _ref2 = slicedToArray(_ref, 2),
+            date = _ref2[0],
+            data = _ref2[1];
 
-    function addLineClick() {
-        var chart = this;
-        var paths = this.marks[0].paths;
-
-        paths.on('mouseover', function (d) {
-            d3.select(this).classed('highlighted', true);
-        }).on('mouseout', function (d) {
-            d3.select(this).classed('highlighted', false);
-        }).on('click', function (d) {
-            console.log(d);
-            chart.listing.wrap.style('display', null);
-            paths.classed('selected', false);
-            d3.select(this).classed('selected', true);
-
-            var tableData = d.values.map(function (d) {
-                return {
-                    ID: d.values.raw[0][chart.config.id_col],
-                    Measure: d.values.raw[0][chart.config.measure_col],
-                    Visit: d.key,
-                    Value: d.values.y
-                };
+        return label = label.data(data.slice(0, n), function (d) {
+          return d.name;
+        }).join(function (enter) {
+          return enter.append("text").attr("transform", function (d) {
+            return "translate(" + x((prev.get(d) || d).value) + "," + y((prev.get(d) || d).rank) + ")";
+          }).attr("y", y.bandwidth() / 2).attr("x", -6).attr("dy", "-0.25em").text(function (d) {
+            return d.name;
+          }).call(function (text) {
+            return text.append("tspan").attr("fill-opacity", 0.7).attr("font-weight", "normal").attr("x", -6).attr("dy", "1.15em");
+          });
+        }, function (update) {
+          return update;
+        }, function (exit) {
+          return exit.transition(transition).remove().attr("transform", function (d) {
+            return "translate(" + x((next.get(d) || d).value) + "," + y((next.get(d) || d).rank) + ")";
+          }).call(function (g) {
+            return g.select("tspan").tween("text", function (d) {
+              return textTween(d.value, (next.get(d) || d).value);
             });
-            chart.listing.draw(tableData);
+          });
+        }).call(function (bar) {
+          return bar.transition(transition).attr("transform", function (d) {
+            return "translate(" + x(d.value) + "," + y(d.rank) + ")";
+          }).call(function (g) {
+            return g.select("tspan").tween("text", function (d) {
+              return textTween((prev.get(d) || d).value, d.value);
+            });
+          });
         });
+      };
     }
 
-    function onResize() {
-        addLineClick.call(this);
+    function ticker(svg, settings, keyframes) {
+        var formatDate = d3.utcFormat('%Y');
+        var now = svg.append("text").style("font", "bold " + settings.bar_size + "px var(--sans-serif)").style("font-variant-numeric", "tabular-nums").attr("text-anchor", "end").attr("x", settings.width - 6).attr("y", settings.margin.top + settings.bar_size * (settings.n_bars - 0.45)).attr("dy", "0.32em").text(formatDate(keyframes[0][0]));
+
+        return function (_ref, transition) {
+            var _ref2 = slicedToArray(_ref, 1),
+                date = _ref2[0];
+
+            transition.end().then(function () {
+                return now.text(formatDate(date));
+            });
+        };
     }
 
-    function onDestroy() {
-        this.listing.destroy();
+    //import y from './chart/y';
+
+    function chart(data, element, settings) {
+        var svg = d3.create("svg").attr("viewBox", [0, 0, settings.width, settings.height]);
+
+        var updateBars = bars(svg, settings, data);
+        var updateAxis = axis(svg, settings);
+        var updateLabels = labels(svg);
+        var updateTicker = ticker(svg, settings, data.keyframes);
+
+        //yield svg.node();
+        var xScale = x$1(settings);
+        //const yScale = y(settings);
+
+        var _iteratorNormalCompletion = true;
+        var _didIteratorError = false;
+        var _iteratorError = undefined;
+
+        try {
+            for (var _iterator = data.keyframes[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                var keyframe = _step.value;
+
+                var transition = svg.transition().duration(settings.duration).ease(d3.easeLinear);
+
+                // Extract the top bar’s value.
+                xScale.domain([0, keyframe[1][0].value]);
+
+                updateAxis(keyframe, transition);
+                updateBars(keyframe, transition);
+                updateLabels(keyframe, transition);
+                updateTicker(keyframe, transition);
+
+                invalidation.then(function () {
+                    return svg.interrupt();
+                });
+                //await transition.end();
+            }
+        } catch (err) {
+            _didIteratorError = true;
+            _iteratorError = err;
+        } finally {
+            try {
+                if (!_iteratorNormalCompletion && _iterator.return) {
+                    _iterator.return();
+                }
+            } finally {
+                if (_didIteratorError) {
+                    throw _iteratorError;
+                }
+            }
+        }
+
+        return {
+            svg: svg,
+            updateBars: updateBars,
+            updateAxis: updateAxis,
+            updateLabels: updateLabels,
+            updateTicker: updateTicker
+        };
     }
 
-    var callbacks = {
-        onInit: onInit,
-        onLayout: onLayout,
-        onPreprocess: onPreprocess,
-        onDatatransform: onDatatransform,
-        onDraw: onDraw,
-        onResize: onResize,
-        onDestroy: onDestroy
-    };
+    //import './util/polyfills';
 
-    function layout(element) {
-        var container = d3.select(element);
-        container.append('div').classed('wc-component', true).attr('id', 'wc-controls');
-        container.append('div').classed('wc-component', true).attr('id', 'wc-chart');
-        container.append('div').classed('wc-component', true).attr('id', 'wc-listing');
-    }
+    function barChartRace(data) {
+        var element = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'body';
+        var settings = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {
+            ordinal_var: 'name',
+            linear_var: 'value',
+            time_var: 'date',
+            color_var: 'category',
+            n_bars: 12,
+            n_keyframes: 10,
+            chart_direction: 'horizontal',
+            width: 1000,
+            margin: {
+                top: 16,
+                right: 6,
+                bottom: 6,
+                left: 0
+            },
+            bar_height: 50,
+            duration: 250
+        };
 
-    function styles() {
-        var styles = ['.wc-chart path.highlighted{', 'stroke-width:3px;', '}', '.wc-chart path.selected{', 'stroke-width:5px;', 'stroke:orange;', '}'];
-        var style = document.createElement('style');
-        style.type = 'text/css';
-        style.innerHTML = styles.join('\n');
-        document.getElementsByTagName('head')[0].appendChild(style);
-    }
+        //layout(element);
+        //styles();
 
-    function barChartRace() {
-        var element = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'body';
-        var settings = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+        settings.height = settings.margin.top + settings.n_bars * settings.bar_height + settings.margin.bottom;
+        dataManipulation(data, settings);
+        console.log(data);
+        var chart$1 = chart(data, element, settings);
 
-        //layout and styles
-        layout(element);
-        styles();
-
-        //Define chart.
-        var mergedSettings = Object.assign({}, JSON.parse(JSON.stringify(configuration.settings)), settings);
-        var syncedSettings = configuration.syncSettings(mergedSettings);
-        var syncedControlInputs = configuration.syncControlInputs(configuration.controlInputs(), syncedSettings);
-        var controls = webcharts.createControls(document.querySelector(element).querySelector('#wc-controls'), {
-            location: 'top',
-            inputs: syncedControlInputs
-        });
-        var chart = webcharts.createChart(document.querySelector(element).querySelector('#wc-chart'), syncedSettings, controls);
-
-        //Define chart callbacks.
-        for (var callback in callbacks) {
-            chart.on(callback.substring(2).toLowerCase(), callbacks[callback]);
-        } //listing
-        var listing = webcharts.createTable(document.querySelector(element).querySelector('#wc-listing'), configuration.listingSettings());
-        listing.wrap.style('display', 'none'); // empty table's popping up briefly
-        listing.init([]);
-        chart.listing = listing;
-        listing.chart = chart;
-
-        return chart;
+        return chart$1;
     }
 
     return barChartRace;
