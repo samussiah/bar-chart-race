@@ -14,7 +14,7 @@
         "d3"
     ],
     "dependencies": {
-        "d3": "^5"
+        "d3": "^7"
     },
     "scripts": {
         "build": "npm audit fix && npm run bundle && npm run format",
